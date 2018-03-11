@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/dnsutil"
+	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
-	"github.com/coredns/coredns/request"
-	"github.com/coredns/coredns/plugin/pkg/dnsutil"
 )
 
 // ServeDNS implements the plugin.Handler interface.
@@ -65,6 +65,8 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 		answers, extras = redis.SRV(qname, z, record)
 	case "SOA":
 		answers, extras = redis.SOA(qname, z, record)
+	case "ANY":
+		answers, extras = redis.ANY(qname, z, record)
 	default:
 		return redis.errorResponse(state, zone, dns.RcodeNotImplemented, nil)
 	}
