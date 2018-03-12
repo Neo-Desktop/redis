@@ -1,7 +1,7 @@
 package redis
 
 import (
-	// "fmt"
+	"log"
 	"time"
 
 	"github.com/coredns/coredns/plugin"
@@ -13,14 +13,14 @@ import (
 
 // ServeDNS implements the plugin.Handler interface.
 func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
-	// fmt.Println("serveDNS")
+	log.Println("serveDNS")
 	state := request.Request{W: w, Req: r}
 
 	qname := state.Name()
 	qtype := state.Type()
 
-	// fmt.Println("name : ", qname)
-	// fmt.Println("type : ", qtype)
+	log.Println("name : ", qname)
+	log.Println("type : ", qtype)
 
 	if time.Since(redis.LastZoneUpdate) > zoneUpdateTime {
 		redis.LoadZones()
@@ -41,7 +41,7 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 	if len(location) == 0 { // empty, no results
 		return redis.errorResponse(state, zone, dns.RcodeNameError, nil)
 	}
-	// fmt.Println("location : ", location)
+	log.Println("location : ", location)
 
 	answers := make([]dns.RR, 0, 10)
 	extras := make([]dns.RR, 0, 10)
@@ -97,6 +97,7 @@ func (redis *Redis) errorResponse(state request.Request, zone string, rcode int,
 
 	state.SizeAndDo(m)
 	state.W.WriteMsg(m)
+
 	// Return success as the rcode to signal we have written to the client.
 	return dns.RcodeSuccess, err
 }

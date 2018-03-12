@@ -3,6 +3,7 @@ package redis
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -226,11 +227,23 @@ func (redis *Redis) SRV(name string, z *Zone, record *Record) (answers, extras [
 }
 
 func (redis *Redis) ANY(name string, z *Zone, record *Record) (answers, extras []dns.RR) {
+	log.Println("in redis.any()")
+
 	answers, extras = redis.SOA(name, z, record)
+	log.Printf("SOA returned: answers: %d extras %d\n", len(answers), len(extras))
+
 	answers, extras = redis.NS(name, z, record)
+	log.Printf("NS returned: answers: %d extras %d\n", len(answers), len(extras))
+
 	answers, extras = redis.A(name, z, record)
+	log.Printf("A returned: answers: %d extras %d\n", len(answers), len(extras))
+
 	answers, extras = redis.AAAA(name, z, record)
+	log.Printf("AAAA returned: answers: %d extras %d\n", len(answers), len(extras))
+
 	answers, extras = redis.CNAME(name, z, record)
+	log.Printf("CNAME returned: answers: %d extras %d\n", len(answers), len(extras))
+
 	return
 }
 
@@ -341,7 +354,7 @@ func (redis *Redis) get(key string, z *Zone) *Record {
 	)
 	conn := redis.Pool.Get()
 	if conn == nil {
-		fmt.Println("error connecting to redis")
+		log.Fatalln("error connecting to redis")
 		return nil
 	}
 	defer conn.Close()
@@ -364,7 +377,7 @@ func (redis *Redis) get(key string, z *Zone) *Record {
 	r := new(Record)
 	err = json.Unmarshal([]byte(val), r)
 	if err != nil {
-		fmt.Println("parse error : ", val, err)
+		log.Fatalln("parse error : ", val, err)
 		return nil
 	}
 	return r
@@ -428,7 +441,7 @@ func (redis *Redis) save(zone string, subdomain string, value string) error {
 
 	conn := redis.Pool.Get()
 	if conn == nil {
-		fmt.Println("error connecting to redis")
+		log.Fatalln("error connecting to redis")
 		return nil
 	}
 	defer conn.Close()
@@ -446,7 +459,7 @@ func (redis *Redis) load(zone string) *Zone {
 
 	conn := redis.Pool.Get()
 	if conn == nil {
-		fmt.Println("error connecting to redis")
+		log.Fatalln("error connecting to redis")
 		return nil
 	}
 	defer conn.Close()
