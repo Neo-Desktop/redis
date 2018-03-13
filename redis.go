@@ -48,7 +48,7 @@ type Record struct {
 }
 
 func (record *Record) HasSOA() bool {
-	return (SOARecord{}) == *record.SOA
+	return nil == record.SOA || (SOARecord{}) == *record.SOA
 }
 
 func (record *Record) HasA() bool {
@@ -472,6 +472,7 @@ func splitQuery(query string) (string, string, bool) {
 	return closestEncloser, sourceOfSynthesis, true
 }
 
+// TODO: add pub/sub functionality
 func (redis *Redis) connect() {
 	redis.Pool = &redisCon.Pool{
 		Dial: func() (redisCon.Conn, error) {
