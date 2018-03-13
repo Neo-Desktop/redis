@@ -13,6 +13,7 @@ import (
 	"github.com/coredns/coredns/plugin"
 
 	redisCon "github.com/garyburd/redigo/redis"
+	"golang.org/x/net/html/atom"
 )
 
 type Redis struct {
@@ -228,23 +229,36 @@ func (redis *Redis) SRV(name string, z *Zone, record *Record) (answers, extras [
 
 func (redis *Redis) ANY(name string, z *Zone, record *Record) (answers, extras []dns.RR) {
 	log.Println("in redis.any()")
+	answersOut := make([]dns.RR, 0, 10)
+	extrasOut := make([]dns.RR, 0, 10)
 
 	answers, extras = redis.SOA(name, z, record)
 	log.Printf("SOA returned: answers: %d extras %d\n", len(answers), len(extras))
+	answersOut = append(answersOut, answers...)
+	extrasOut = append(extrasOut, extras...)
 
 	answers, extras = redis.NS(name, z, record)
 	log.Printf("NS returned: answers: %d extras %d\n", len(answers), len(extras))
+	answersOut = append(answersOut, answers...)
+	extrasOut = append(extrasOut, extras...)
 
 	answers, extras = redis.A(name, z, record)
 	log.Printf("A returned: answers: %d extras %d\n", len(answers), len(extras))
+	answersOut = append(answersOut, answers...)
+	extrasOut = append(extrasOut, extras...)
 
 	answers, extras = redis.AAAA(name, z, record)
 	log.Printf("AAAA returned: answers: %d extras %d\n", len(answers), len(extras))
+	answersOut = append(answersOut, answers...)
+	extrasOut = append(extrasOut, extras...)
 
 	answers, extras = redis.CNAME(name, z, record)
 	log.Printf("CNAME returned: answers: %d extras %d\n", len(answers), len(extras))
+	answersOut = append(answersOut, answers...)
+	extrasOut = append(extrasOut, extras...)
 
-	return
+	log.Printf("redis.any() returning answers: %d. extras: %d\n", len(answersOut), len(extrasOut))
+	return answersOut, extrasOut
 }
 
 func (redis *Redis) SOA(name string, z *Zone, record *Record) (answers, extras []dns.RR) {
