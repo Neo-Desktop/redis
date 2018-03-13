@@ -298,11 +298,7 @@ func (redis *Redis) SOA(name string, z *Zone, record *Record, qtype string) (ans
 	r.Minttl = record.SOA.MinTtl
 	r.Serial = record.SOA.Serial
 
-	if record.SOA.Ns == "" && qtype == "SOA" {
-		extras = append(extras, r)
-	} else {
-		answers = append(answers, r)
-	}
+	answers = append(answers, r)
 
 	return
 }

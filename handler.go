@@ -19,6 +19,11 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 	qname := state.Name()
 	qtype := state.Type()
 
+	answers := make([]dns.RR, 0, 10)
+	extras := make([]dns.RR, 0, 10)
+	ns := make([]dns.RR, 0, 10)
+	m := new(dns.Msg)
+
 	log.Println("name : ", qname)
 	log.Println("type : ", qtype)
 
@@ -34,19 +39,19 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 
 	z := redis.load(zone)
 	if z == nil {
-		return redis.errorResponse(state, zone, dns.RcodeServerFailure, nil)
+		m.SetRcode(state.Req, dns.RcodeServerFailure)
+		return redis.sendResponse(state, w, m, r)
 	}
 
 	location := redis.findLocation(qname, z)
 	if len(location) == 0 { // empty, no results
-		return redis.errorResponse(state, zone, dns.RcodeNameError, nil)
+		record := redis.get(z.Name, z)
+		ns = redis.AuthoritativeResponse(qname, z, record)
+		m.Ns = append(m.Ns, ns...)
+		m.SetRcode(state.Req, dns.RcodeNameError)
+		return redis.sendResponse(state, w, m, r)
 	}
 	log.Println("location : ", location)
-
-	answers := make([]dns.RR, 0, 10)
-	extras := make([]dns.RR, 0, 10)
-	ns := make([]dns.RR, 0, 10)
-	m := new(dns.Msg)
 
 	record := redis.get(location, z)
 
@@ -79,33 +84,23 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 		ns = redis.AuthoritativeResponse(qname, z, record)
 	}
 
-	m.SetReply(r)
-	m.Authoritative, m.RecursionAvailable, m.Compress = true, false, true
-
 	m.Answer = append(m.Answer, answers...)
 	m.Extra = append(m.Extra, extras...)
 	m.Ns = append(m.Ns, ns...)
+
+	return redis.sendResponse(state, w, m, r)
+}
+
+// Name implements the Handler interface.
+func (redis *Redis) Name() string { return "redis" }
+
+func (redis *Redis) sendResponse(state request.Request, w dns.ResponseWriter, m *dns.Msg, r *dns.Msg) (int, error) {
+	m.SetReply(r)
+	m.Authoritative, m.RecursionAvailable, m.Compress = true, false, true
 
 	m = dnsutil.Dedup(m)
 	state.SizeAndDo(m)
 	m, _ = state.Scrub(m)
 	w.WriteMsg(m)
 	return dns.RcodeSuccess, nil
-}
-
-// Name implements the Handler interface.
-func (redis *Redis) Name() string { return "redis" }
-
-func (redis *Redis) errorResponse(state request.Request, zone string, rcode int, err error) (int, error) {
-	m := new(dns.Msg)
-	m.SetRcode(state.Req, rcode)
-	m.Authoritative, m.RecursionAvailable, m.Compress = true, false, true
-
-	// m.Ns, _ = redis.SOA(state.Name(), zone, nil)
-
-	state.SizeAndDo(m)
-	state.W.WriteMsg(m)
-
-	// Return success as the rcode to signal we have written to the client.
-	return dns.RcodeSuccess, err
 }
