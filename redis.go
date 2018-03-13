@@ -13,7 +13,6 @@ import (
 	"github.com/coredns/coredns/plugin"
 
 	redisCon "github.com/garyburd/redigo/redis"
-	"golang.org/x/net/html/atom"
 )
 
 type Redis struct {
