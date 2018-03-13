@@ -6,6 +6,8 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/mholt/caddy"
+	"log"
+	"time"
 )
 
 func init() {
@@ -86,12 +88,35 @@ func redisParse(c *caddy.Controller) (*Redis, error) {
 					var val int
 					val, err = strconv.Atoi(c.Val())
 					if err != nil {
-						val = defaultTtl
+						val = TTL
 					}
 					redis.Ttl = uint32(val)
+				case "refresh_time":
+					// parse time in seconds
+					if !c.NextArg() {
+						return &Redis{}, c.ArgErr()
+					}
+					var val int
+					val, err = strconv.Atoi(c.Val())
+					if err != nil {
+						val = TTL
+					}
+					ZoneUpdateTime = time.Duration(val) * time.Second
+				case "database_index":
+					//set the default index
+					// parse time in seconds
+					if !c.NextArg() {
+						return &Redis{}, c.ArgErr()
+					}
+					var val int
+					val, err = strconv.Atoi(c.Val())
+					if err != nil {
+						val = 0
+					}
+					redis.redisDbIndex = val
 				default:
 					if c.Val() != "}" {
-						return &Redis{}, c.Errf("unknown property '%s'", c.Val())
+						log.Printf("Warning: unknown property '%s'", c.Val())
 					}
 				}
 

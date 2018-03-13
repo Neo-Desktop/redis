@@ -22,12 +22,12 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 	log.Println("name : ", qname)
 	log.Println("type : ", qtype)
 
-	if time.Since(redis.LastZoneUpdate) > zoneUpdateTime {
+	if time.Since(redis.LastZoneUpdate) > ZoneUpdateTime {
 		redis.LoadZones()
 	}
 
 	zone := plugin.Zones(redis.Zones).Matches(qname)
-	// fmt.Println("zone : ", zone)
+	log.Println("zone : ", zone)
 	if zone == "" {
 		return plugin.NextOrFailure(qname, redis.Next, ctx, w, r)
 	}
@@ -64,11 +64,13 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 	case "SRV":
 		answers, extras = redis.SRV(qname, z, record)
 	case "SOA":
-		answers, extras = redis.SOA(qname, z, record)
+		answers, extras = redis.SOA(qname, z, record, qtype)
+	case "HINFO":
 	case "ANY":
 		answers, extras = redis.ANY(qname, z, record)
 	default:
-		return redis.errorResponse(state, zone, dns.RcodeNotImplemented, nil)
+		//return redis.errorResponse(state, zone, dns.RcodeNotImplemented, nil)
+		answers, extras = redis.AuthoritativeResponse(qname, z, record)
 	}
 
 	m := new(dns.Msg)

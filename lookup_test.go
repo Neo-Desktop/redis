@@ -18,7 +18,7 @@ var zones = []string{
 var lookupEntries = [][][]string{
 	{
 		{"@",
-			"{\"soa\":{\"ttl\":300, \"minttl\":100, \"mbox\":\"hostmaster.example.com.\",\"ns\":\"ns1.example.com.\",\"refresh\":44,\"retry\":55,\"expire\":66}}",
+			"{\"soa\":{\"ttl\":300, \"minttl\":100, \"mbox\":\"DefaultHostmaster.example.com.\",\"ns\":\"ns1.example.com.\",\"refresh\":44,\"retry\":55,\"expire\":66}}",
 		},
 		{"x",
 			"{\"a\":[{\"ttl\":300, \"ip\":\"1.2.3.4\"},{\"ttl\":300, \"ip\":\"5.6.7.8\"}]," +
@@ -46,7 +46,7 @@ var lookupEntries = [][][]string{
 	},
 	{
 		{"@",
-			"{\"soa\":{\"ttl\":300, \"minttl\":100, \"mbox\":\"hostmaster.example.net.\",\"ns\":\"ns1.example.net.\",\"refresh\":44,\"retry\":55,\"expire\":66}," +
+			"{\"soa\":{\"ttl\":300, \"minttl\":100, \"mbox\":\"DefaultHostmaster.example.net.\",\"ns\":\"ns1.example.net.\",\"refresh\":44,\"retry\":55,\"expire\":66}," +
 				"\"ns\":[{\"ttl\":300, \"host\":\"ns1.example.net.\"},{\"ttl\":300, \"host\":\"ns2.example.net.\"}]}",
 		},
 		{"sub.*",
@@ -144,7 +144,7 @@ var testCases = [][]test.Case{
 		{
 			Qname: "example.com.", Qtype: dns.TypeSOA,
 			Answer: []dns.RR{
-				test.SOA("example.com. 300 IN SOA ns1.example.com. hostmaster.example.com. 1460498836 44 55 66 100"),
+				test.SOA("example.com. 300 IN SOA ns1.example.com. DefaultHostmaster.example.com. 1460498836 44 55 66 100"),
 			},
 		},
 	},

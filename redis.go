@@ -13,20 +13,22 @@ import (
 	"github.com/coredns/coredns/plugin"
 
 	redisCon "github.com/garyburd/redigo/redis"
+	"strconv"
 )
 
 type Redis struct {
 	Next           plugin.Handler
 	Pool           *redisCon.Pool
+	Ttl            uint32
+	Zones          []string
+	LastZoneUpdate time.Time
 	redisAddress   string
 	redisPassword  string
+	redisDbIndex   int
 	connectTimeout int
 	readTimeout    int
 	keyPrefix      string
 	keySuffix      string
-	Ttl            uint32
-	Zones          []string
-	LastZoneUpdate time.Time
 }
 
 type Zone struct {
@@ -35,48 +37,48 @@ type Zone struct {
 }
 
 type Record struct {
-	A     []A_Record     `json:"a,omitempty"`
-	AAAA  []AAAA_Record  `json:"aaaa,omitempty"`
-	TXT   []TXT_Record   `json:"txt,omitempty"`
-	CNAME []CNAME_Record `json:"cname,omitempty"`
-	NS    []NS_Record    `json:"ns,omitempty"`
-	MX    []MX_Record    `json:"mx,omitempty"`
-	SRV   []SRV_Record   `json:"srv,omitempty"`
-	SOA   SOA_Record     `json:"soa,omitempty"`
+	A     []ARecord     `json:"a,omitempty"`
+	AAAA  []AAAARecord  `json:"aaaa,omitempty"`
+	TXT   []TXTRecord   `json:"txt,omitempty"`
+	CNAME []CNAMERecord `json:"cname,omitempty"`
+	NS    []NSRecord    `json:"ns,omitempty"`
+	MX    []MXRecord    `json:"mx,omitempty"`
+	SRV   []SRVRecord   `json:"srv,omitempty"`
+	SOA   *SOARecord    `json:"soa,omitempty"`
 }
 
-type A_Record struct {
+type ARecord struct {
 	Ttl uint32 `json:"ttl,omitempty"`
 	Ip  net.IP `json:"ip"`
 }
 
-type AAAA_Record struct {
+type AAAARecord struct {
 	Ttl uint32 `json:"ttl,omitempty"`
 	Ip  net.IP `json:"ip"`
 }
 
-type TXT_Record struct {
+type TXTRecord struct {
 	Ttl  uint32 `json:"ttl,omitempty"`
 	Text string `json:"text"`
 }
 
-type CNAME_Record struct {
+type CNAMERecord struct {
 	Ttl  uint32 `json:"ttl,omitempty"`
 	Host string `json:"host"`
 }
 
-type NS_Record struct {
+type NSRecord struct {
 	Ttl  uint32 `json:"ttl,omitempty"`
 	Host string `json:"host"`
 }
 
-type MX_Record struct {
+type MXRecord struct {
 	Ttl        uint32 `json:"ttl,omitempty"`
 	Host       string `json:"host"`
 	Preference uint16 `json:"preference"`
 }
 
-type SRV_Record struct {
+type SRVRecord struct {
 	Ttl      uint32 `json:"ttl,omitempty"`
 	Priority uint16 `json:"priority"`
 	Weight   uint16 `json:"weight"`
@@ -84,10 +86,11 @@ type SRV_Record struct {
 	Target   string `json:"target"`
 }
 
-type SOA_Record struct {
+type SOARecord struct {
 	Ttl     uint32 `json:"ttl,omitempty"`
 	Ns      string `json:"ns"`
 	MBox    string `json:"MBox"`
+	Serial  uint32 `json:"serial"`
 	Refresh uint32 `json:"refresh"`
 	Retry   uint32 `json:"retry"`
 	Expire  uint32 `json:"expire"`
@@ -231,7 +234,7 @@ func (redis *Redis) ANY(name string, z *Zone, record *Record) (answers, extras [
 	answersOut := make([]dns.RR, 0, 10)
 	extrasOut := make([]dns.RR, 0, 10)
 
-	answers, extras = redis.SOA(name, z, record)
+	answers, extras = redis.SOA(name, z, record, "ANY")
 	log.Printf("SOA returned: answers: %d extras %d\n", len(answers), len(extras))
 	answersOut = append(answersOut, answers...)
 	extrasOut = append(extrasOut, extras...)
@@ -260,29 +263,45 @@ func (redis *Redis) ANY(name string, z *Zone, record *Record) (answers, extras [
 	return answersOut, extrasOut
 }
 
-func (redis *Redis) SOA(name string, z *Zone, record *Record) (answers, extras []dns.RR) {
-	r := new(dns.SOA)
-	if record.SOA.Ns == "" {
-		r.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeSOA,
-			Class: dns.ClassINET, Ttl: redis.Ttl}
-		r.Ns = "ns1." + name
-		r.Mbox = "hostmaster." + name
-		r.Refresh = 86400
-		r.Retry = 7200
-		r.Expire = 3600
-		r.Minttl = redis.Ttl
-	} else {
-		r.Hdr = dns.RR_Header{Name: z.Name, Rrtype: dns.TypeSOA,
-			Class: dns.ClassINET, Ttl: redis.minTtl(record.SOA.Ttl)}
-		r.Ns = record.SOA.Ns
-		r.Mbox = record.SOA.MBox
-		r.Refresh = record.SOA.Refresh
-		r.Retry = record.SOA.Retry
-		r.Expire = record.SOA.Expire
-		r.Minttl = record.SOA.MinTtl
+func (redis *Redis) SOA(name string, z *Zone, record *Record, qtype string) (answers, extras []dns.RR) {
+	if qtype != "SOA" {
+		return
 	}
-	r.Serial = redis.serial()
-	answers = append(answers, r)
+
+	r := new(dns.SOA)
+	r.Hdr = dns.RR_Header{Name: z.Name, Rrtype: dns.TypeSOA,
+		Class: dns.ClassINET, Ttl: redis.minTtl(record.SOA.Ttl)}
+	r.Ns = record.SOA.Ns
+	r.Mbox = record.SOA.MBox
+	r.Refresh = record.SOA.Refresh
+	r.Retry = record.SOA.Retry
+	r.Expire = record.SOA.Expire
+	r.Minttl = record.SOA.MinTtl
+	r.Serial = record.SOA.Serial
+
+	if record.SOA.Ns == "" && qtype == "SOA" {
+		extras = append(extras, r)
+	} else {
+		answers = append(answers, r)
+	}
+
+	return
+}
+
+func (redis *Redis) AuthoritativeResponse(name string, z *Zone, record *Record) (answers, extras []dns.RR) {
+	r := new(dns.SOA)
+	r.Hdr = dns.RR_Header{Name: z.Name, Rrtype: dns.TypeSOA,
+		Class: dns.ClassINET, Ttl: redis.minTtl(record.SOA.Ttl)}
+	r.Ns = record.SOA.Ns
+	r.Mbox = record.SOA.MBox
+	r.Refresh = record.SOA.Refresh
+	r.Retry = record.SOA.Retry
+	r.Expire = record.SOA.Expire
+	r.Minttl = record.SOA.MinTtl
+	r.Serial = record.SOA.Serial
+
+	extras = append(extras, r)
+
 	return
 }
 
@@ -305,24 +324,28 @@ func (redis *Redis) hosts(name string, z *Zone) []dns.RR {
 	return answers
 }
 
-func (redis *Redis) serial() uint32 {
-	return uint32(time.Now().Unix())
+func (redis *Redis) Serial(count uint, now time.Time) uint32 {
+	out, err := strconv.ParseInt(fmt.Sprintf("%04d%02d%02d%02d", now.Year(), now.Month(), now.Day(), count), 10, 8)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return uint32(out)
 }
 
-func (redis *Redis) minTtl(ttl uint32) uint32 {
-	if redis.Ttl == 0 && ttl == 0 {
-		return defaultTtl
+func (redis *Redis) minTtl(ttlIn uint32) uint32 {
+	if redis.Ttl == 0 && ttlIn == 0 {
+		return uint32(TTL)
 	}
 	if redis.Ttl == 0 {
-		return ttl
+		return ttlIn
 	}
-	if ttl == 0 {
+	if ttlIn == 0 {
 		return redis.Ttl
 	}
-	if redis.Ttl < ttl {
+	if redis.Ttl < ttlIn {
 		return redis.Ttl
 	}
-	return ttl
+	return ttlIn
 }
 
 func (redis *Redis) findLocation(query string, z *Zone) string {
@@ -443,6 +466,9 @@ func (redis *Redis) connect() {
 			if redis.readTimeout != 0 {
 				opts = append(opts, redisCon.DialReadTimeout(time.Duration(redis.readTimeout)*time.Millisecond))
 			}
+			if redis.redisDbIndex != 0 {
+				opts = append(opts, redisCon.DialDatabase(redis.redisDbIndex))
+			}
 
 			return redisCon.Dial("tcp", redis.redisAddress, opts...)
 		},
@@ -515,8 +541,8 @@ func split255(s string) []string {
 	return sx
 }
 
-const (
-	defaultTtl     = 360
-	hostmaster     = "hostmaster"
-	zoneUpdateTime = 10 * time.Minute
+var (
+	TTL               = 300
+	DefaultHostmaster = "hostmaster"
+	ZoneUpdateTime    = 1 * time.Minute
 )
