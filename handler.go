@@ -45,6 +45,8 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 
 	answers := make([]dns.RR, 0, 10)
 	extras := make([]dns.RR, 0, 10)
+	ns := make([]dns.RR, 0, 10)
+	m := new(dns.Msg)
 
 	record := redis.get(location, z)
 
@@ -69,16 +71,20 @@ func (redis *Redis) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.M
 	case "ANY":
 		answers, extras = redis.ANY(qname, z, record)
 	default:
-		//return redis.errorResponse(state, zone, dns.RcodeNotImplemented, nil)
-		answers, extras = redis.AuthoritativeResponse(qname, z, record)
+		//redis.errorResponse(state, zone, dns.RcodeNotImplemented, nil)
+		m.SetRcode(state.Req, dns.RcodeNotImplemented)
 	}
 
-	m := new(dns.Msg)
+	if record.HasSOA() && len(answers) <= 0 {
+		ns = redis.AuthoritativeResponse(qname, z, record)
+	}
+
 	m.SetReply(r)
 	m.Authoritative, m.RecursionAvailable, m.Compress = true, false, true
 
 	m.Answer = append(m.Answer, answers...)
 	m.Extra = append(m.Extra, extras...)
+	m.Ns = append(m.Ns, ns...)
 
 	m = dnsutil.Dedup(m)
 	state.SizeAndDo(m)

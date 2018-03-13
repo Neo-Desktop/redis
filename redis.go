@@ -47,6 +47,34 @@ type Record struct {
 	SOA   *SOARecord    `json:"soa,omitempty"`
 }
 
+func (record *Record) HasSOA() bool {
+	return (SOARecord{}) == *record.SOA
+}
+
+func (record *Record) HasA() bool {
+	return len(record.A) > 0
+}
+
+func (record *Record) HasAAAA() bool {
+	return len(record.SRV) > 0
+}
+
+func (record *Record) HasCNAME() bool {
+	return len(record.SRV) > 0
+}
+
+func (record *Record) HasNS() bool {
+	return len(record.SRV) > 0
+}
+
+func (record *Record) HasNX() bool {
+	return len(record.SRV) > 0
+}
+
+func (record *Record) HasSRV() bool {
+	return len(record.SRV) > 0
+}
+
 type ARecord struct {
 	Ttl uint32 `json:"ttl,omitempty"`
 	Ip  net.IP `json:"ip"`
@@ -234,11 +262,6 @@ func (redis *Redis) ANY(name string, z *Zone, record *Record) (answers, extras [
 	answersOut := make([]dns.RR, 0, 10)
 	extrasOut := make([]dns.RR, 0, 10)
 
-	answers, extras = redis.SOA(name, z, record, "ANY")
-	log.Printf("SOA returned: answers: %d extras %d\n", len(answers), len(extras))
-	answersOut = append(answersOut, answers...)
-	extrasOut = append(extrasOut, extras...)
-
 	answers, extras = redis.NS(name, z, record)
 	log.Printf("NS returned: answers: %d extras %d\n", len(answers), len(extras))
 	answersOut = append(answersOut, answers...)
@@ -264,10 +287,6 @@ func (redis *Redis) ANY(name string, z *Zone, record *Record) (answers, extras [
 }
 
 func (redis *Redis) SOA(name string, z *Zone, record *Record, qtype string) (answers, extras []dns.RR) {
-	if qtype != "SOA" {
-		return
-	}
-
 	r := new(dns.SOA)
 	r.Hdr = dns.RR_Header{Name: z.Name, Rrtype: dns.TypeSOA,
 		Class: dns.ClassINET, Ttl: redis.minTtl(record.SOA.Ttl)}
@@ -288,7 +307,7 @@ func (redis *Redis) SOA(name string, z *Zone, record *Record, qtype string) (ans
 	return
 }
 
-func (redis *Redis) AuthoritativeResponse(name string, z *Zone, record *Record) (answers, extras []dns.RR) {
+func (redis *Redis) AuthoritativeResponse(name string, z *Zone, record *Record) (ns []dns.RR) {
 	r := new(dns.SOA)
 	r.Hdr = dns.RR_Header{Name: z.Name, Rrtype: dns.TypeSOA,
 		Class: dns.ClassINET, Ttl: redis.minTtl(record.SOA.Ttl)}
@@ -300,7 +319,7 @@ func (redis *Redis) AuthoritativeResponse(name string, z *Zone, record *Record) 
 	r.Minttl = record.SOA.MinTtl
 	r.Serial = record.SOA.Serial
 
-	extras = append(extras, r)
+	ns = append(ns, r)
 
 	return
 }
