@@ -1,136 +1,132 @@
-package redis
+package file
 
 import (
-    "strconv"
+	"os"
+	"path"
 
-    "github.com/coredns/coredns/core/dnsserver"
-    "github.com/coredns/coredns/plugin"
-    "github.com/mholt/caddy"
-    "log"
-    "time"
+	"github.com/coredns/coredns/core/dnsserver"
+	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/parse"
+	"github.com/coredns/coredns/plugin/pkg/upstream"
+
+	"github.com/mholt/caddy"
 )
 
 func init() {
-    caddy.RegisterPlugin("redis", caddy.Plugin{
-        ServerType: "dns",
-        Action:     setup,
-    })
+	caddy.RegisterPlugin("file", caddy.Plugin{
+		ServerType: "dns",
+		Action:     setup,
+	})
 }
 
 func setup(c *caddy.Controller) error {
-    r, err := redisParse(c)
-    if err != nil {
-        return plugin.Error("redis", err)
-    }
+	zones, err := fileParse(c)
+	if err != nil {
+		return plugin.Error("file", err)
+	}
 
-    dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-        r.Next = next
-        return r
-    })
+	// Add startup functions to notify the master(s).
+	for _, n := range zones.Names {
+		z := zones.Z[n]
+		c.OnStartup(func() error {
+			z.StartupOnce.Do(func() {
+				if len(z.TransferTo) > 0 {
+					z.Notify()
+				}
+				z.Reload()
+			})
+			return nil
+		})
+	}
+	for _, n := range zones.Names {
+		z := zones.Z[n]
+		c.OnShutdown(z.OnShutdown)
+	}
 
-    return nil
+	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		return File{Next: next, Zones: zones}
+	})
+
+	return nil
 }
 
-func redisParse(c *caddy.Controller) (*Redis, error) {
-    redis := Redis{
-        keyPrefix: "",
-        keySuffix: "",
-        Ttl:       300,
-    }
-    var (
-        err error
-    )
+func fileParse(c *caddy.Controller) (Zones, error) {
+	z := make(map[string]*Zone)
+	names := []string{}
+	origins := []string{}
 
-    for c.Next() {
-        if c.NextBlock() {
-            for {
-                switch c.Val() {
-                case "address":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    redis.redisAddress = c.Val()
-                case "password":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    redis.redisPassword = c.Val()
-                case "prefix":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    redis.keyPrefix = c.Val()
-                case "suffix":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    redis.keySuffix = c.Val()
-                case "connect_timeout":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    redis.connectTimeout, err = strconv.Atoi(c.Val())
-                    if err != nil {
-                        redis.connectTimeout = 0
-                    }
-                case "read_timeout":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    redis.readTimeout, err = strconv.Atoi(c.Val())
-                    if err != nil {
-                        redis.readTimeout = 0
-                    }
-                case "ttl":
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    var val int
-                    val, err = strconv.Atoi(c.Val())
-                    if err != nil {
-                        val = TTL
-                    }
-                    redis.Ttl = uint32(val)
-                case "refresh_time":
-                    // parse time in seconds
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    var val int
-                    val, err = strconv.Atoi(c.Val())
-                    if err != nil {
-                        val = TTL
-                    }
-                    ZoneUpdateTime = time.Duration(val) * time.Second
-                case "database_index":
-                    //set the default index
-                    // parse time in seconds
-                    if !c.NextArg() {
-                        return &Redis{}, c.ArgErr()
-                    }
-                    var val int
-                    val, err = strconv.Atoi(c.Val())
-                    if err != nil {
-                        val = 0
-                    }
-                    redis.redisDbIndex = val
-                default:
-                    if c.Val() != "}" {
-                        log.Printf("Warning: unknown property '%s'", c.Val())
-                    }
-                }
+	config := dnsserver.GetConfig(c)
 
-                if !c.Next() {
-                    break
-                }
-            }
+	for c.Next() {
+		// file db.file [zones...]
+		if !c.NextArg() {
+			return Zones{}, c.ArgErr()
+		}
+		fileName := c.Val()
 
-        }
+		origins = make([]string, len(c.ServerBlockKeys))
+		copy(origins, c.ServerBlockKeys)
+		args := c.RemainingArgs()
+		if len(args) > 0 {
+			origins = args
+		}
 
-        redis.connect()
-        redis.LoadZones()
+		if !path.IsAbs(fileName) && config.Root != "" {
+			fileName = path.Join(config.Root, fileName)
+		}
 
-        return &redis, nil
-    }
-    return &Redis{}, nil
+		reader, err := os.Open(fileName)
+		if err != nil {
+			// bail out
+			return Zones{}, err
+		}
+
+		for i := range origins {
+			origins[i] = plugin.Host(origins[i]).Normalize()
+			zone, err := Parse(reader, origins[i], fileName, 0)
+			if err == nil {
+				z[origins[i]] = zone
+			} else {
+				return Zones{}, err
+			}
+			names = append(names, origins[i])
+		}
+
+		noReload := false
+		upstr := upstream.Upstream{}
+		t := []string{}
+		var e error
+
+		for c.NextBlock() {
+			switch c.Val() {
+			case "transfer":
+				t, _, e = parse.Transfer(c, false)
+				if e != nil {
+					return Zones{}, e
+				}
+
+			case "no_reload":
+				noReload = true
+
+			case "upstream":
+				args := c.RemainingArgs()
+				upstr, err = upstream.NewUpstream(args)
+				if err != nil {
+					return Zones{}, err
+				}
+
+			default:
+				return Zones{}, c.Errf("unknown property '%s'", c.Val())
+			}
+
+			for _, origin := range origins {
+				if t != nil {
+					z[origin].TransferTo = append(z[origin].TransferTo, t...)
+				}
+				z[origin].NoReload = noReload
+				z[origin].Upstream = upstr
+			}
+		}
+	}
+	return Zones{Z: z, Names: names}, nil
 }
