@@ -3,19 +3,19 @@
 package file
 
 import (
-	"strings"
+    "strings"
 
-	"github.com/coredns/coredns/plugin/pkg/fuzz"
-	"github.com/coredns/coredns/plugin/test"
+    "github.com/coredns/coredns/plugin/pkg/fuzz"
+    "github.com/coredns/coredns/plugin/test"
 )
 
 // Fuzz fuzzes file.
 func Fuzz(data []byte) int {
-	name := "miek.nl."
-	zone, _ := Parse(strings.NewReader(fuzzMiekNL), name, "stdin", 0)
-	f := File{Next: test.ErrorHandler(), Zones: Zones{Z: map[string]*Zone{name: zone}, Names: []string{name}}}
+    name := "miek.nl."
+    zone, _ := Parse(strings.NewReader(fuzzMiekNL), name, "stdin", 0)
+    f := File{Next: test.ErrorHandler(), Zones: Zones{Z: map[string]*Zone{name: zone}, Names: []string{name}}}
 
-	return fuzz.Do(f, data)
+    return fuzz.Do(f, data)
 }
 
 const fuzzMiekNL = `
@@ -38,13 +38,13 @@ $ORIGIN miek.nl.
                 IN      MX      10 aspmx2.googlemail.com.
                 IN      MX      10 aspmx3.googlemail.com.
 
-		IN      A       139.162.196.78
-		IN      AAAA    2a01:7e00::f03c:91ff:fef1:6735
+        IN      A       139.162.196.78
+        IN      AAAA    2a01:7e00::f03c:91ff:fef1:6735
 
 a               IN      A       139.162.196.78
                 IN      AAAA    2a01:7e00::f03c:91ff:fef1:6735
 www             IN      CNAME   a
 archive         IN      CNAME   a
 
-srv		IN	SRV     10 10 8080 a.miek.nl.
-mx		IN	MX      10 a.miek.nl.`
+srv        IN    SRV     10 10 8080 a.miek.nl.
+mx        IN    MX      10 a.miek.nl.`
