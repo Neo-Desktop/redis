@@ -1,4 +1,4 @@
-package file
+package redis
 
 import (
 	"github.com/coredns/coredns/plugin/pkg/dnsutil"

@@ -1,4 +1,4 @@
-package file
+package redis
 
 // exampleOrgSigned is a fake signed example.org zone with two delegations,
 // one signed (with DSs) and one "normal".

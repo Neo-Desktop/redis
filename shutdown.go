@@ -1,4 +1,4 @@
-package file
+package redis
 
 // OnShutdown shuts down any running go-routines for this zone.
 func (z *Zone) OnShutdown() error {

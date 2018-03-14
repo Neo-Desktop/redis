@@ -1,6 +1,6 @@
 // +build fuzz
 
-package file
+package redis
 
 import (
 	"strings"

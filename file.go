@@ -1,5 +1,5 @@
 // Package file implements a file backend.
-package file
+package redis
 
 import (
 	"fmt"

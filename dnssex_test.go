@@ -1,4 +1,4 @@
-package file
+package redis
 
 const dbDnssexNLSigned = `
 ; File written on Tue Mar 29 21:02:24 2016
