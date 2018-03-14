@@ -20,15 +20,15 @@ file DBFILE [ZONES...]
 * **DBFILE** the database file to read and parse. If the path is relative the path from the *root*
   directive will be prepended to it.
 * **ZONES** zones it should be authoritative for. If empty, the zones from the configuration block
-    are used.
+	are used.
 
 If you want to round robin A and AAAA responses look at the *loadbalance* plugin.
 
 ~~~
 file DBFILE [ZONES... ] {
-    transfer to ADDRESS...
-    no_reload
-    upstream [ADDRESS...]
+	transfer to ADDRESS...
+	no_reload
+	upstream [ADDRESS...]
 }
 ~~~
 
@@ -51,10 +51,10 @@ notifies to 10.240.1.1
 
 ~~~ corefile
 example.org {
-    file example.org.signed {
-        transfer to *
-        transfer to 10.240.1.1
-    }
+	file example.org.signed {
+		transfer to *
+		transfer to 10.240.1.1
+	}
 }
 ~~~
 
@@ -62,9 +62,9 @@ Or use a single zone file for multiple zones:
 
 ~~~
 . {
-    file example.org.signed example.org example.net {
-        transfer to *
-        transfer to 10.240.1.1
-    }
+	file example.org.signed example.org example.net {
+		transfer to *
+		transfer to 10.240.1.1
+	}
 }
 ~~~
